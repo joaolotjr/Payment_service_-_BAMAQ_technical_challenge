@@ -1,0 +1,11 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: bamaq_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: bamaq_payments_db
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
