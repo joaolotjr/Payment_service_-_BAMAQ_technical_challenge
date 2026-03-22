@@ -7,5 +7,5 @@ services:
       POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: bamaq_payments_db
     ports:
-      - "5432:5432"
+      - '5433:5432'
     restart: unless-stopped
