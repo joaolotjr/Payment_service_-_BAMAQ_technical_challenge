@@ -1,13 +1,32 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enum para travar os status possíveis, garantindo integridade
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  
+  // AQUI ESTÁ O SEGREDO DO DESAFIO: @unique delega a trava de concorrência pro banco
+  idempotencyKey String        @unique @map("idempotency_key") 
+  
+  customerId     String        @map("customer_id")
+  amount         Int           // Valores monetários geralmente são salvos em centavos (inteiros)
+  status         PaymentStatus @default(PENDING)
+  responseBody   Json?         @map("response_body") // Útil para guardar a resposta exata de falha/sucesso
+  
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  @@map("payments") // Nome da tabela no banco em minúsculo (boa prática no Postgres)
 }
