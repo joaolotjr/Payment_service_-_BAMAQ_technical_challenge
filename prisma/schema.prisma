@@ -1,10 +1,10 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"] // Adicione esta linha para garantir a compatibilidade
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 // Enum para travar os status possíveis, garantindo integridade
