@@ -75,6 +75,9 @@ Para lidar com a alta carga de conexões simultâneas no banco sem gerar o erro 
 **- Processamento Assíncrono (Event-Driven com Redis/BullMQ)**
 Para garantir que a aplicação não bloqueie o Event Loop do Node.js durante o tempo de processamento do gateway (I/O intensivo), a arquitetura foi desenhada de forma assíncrona. O endpoint salva a intenção de pagamento no banco e delega o processamento pesado para uma fila gerenciada pelo Redis, devolvendo imediatamente o status PENDING para o cliente (202 Accepted). Um Worker em background consome a fila e finaliza a transação com SUCCESS ou FAILED.
 
+**- Observabilidade (Logs Estruturados e Correlation ID)**
+Para garantir a rastreabilidade em um ambiente distribuído e assíncrono, a aplicação utiliza o **Pino** para geração de Logs Estruturados (JSON). Toda requisição recebe (ou gera) um `Correlation ID` único, que é injetado no contexto do log e repassado integralmente para os _Workers_ do Redis. Isso permite que ferramentas de APM (como Datadog ou Kibana) consigam rastrear o ciclo de vida completo de uma transação, desde a Controller até a finalização do processamento em _background_.
+
 ---
 
 ## 🧪 Como testar a aplicação

@@ -1,14 +1,17 @@
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { Logger, LoggerErrorInterceptor } from 'nestjs-pino';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  // Passamos bufferLogs para o Nest esperar o Pino carregar antes de falar qualquer coisa
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
 
-  // Habilita o CORS para o nosso front-end conseguir chamar a API depois
+  // Substitui o Logger padrão pelo Pino
+  app.useLogger(app.get(Logger));
+  app.useGlobalInterceptors(new LoggerErrorInterceptor());
+
   app.enableCors();
-
-  // Ativa as validações globais do DTO
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
@@ -18,8 +21,7 @@ async function bootstrap() {
 
   await app.listen(process.env.PORT ?? 3000);
 
-  // --- O Log amigável para o Avaliador ---  
-  const logger = new Logger('BamaqAPI');
+  const logger = app.get(Logger);
   logger.log(`🚀 Servidor iniciado com sucesso!`);
   logger.log(`👉 Teste a aplicação acessando: http://localhost:3000/`);
 }

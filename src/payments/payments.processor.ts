@@ -10,8 +10,8 @@ export class PaymentsProcessor {
     constructor(private readonly prisma: PrismaService) { }
 
     @Process('process-transaction')
-    async handleTransaction(job: Job<{ paymentId: string }>) {
-        this.logger.log(`[Worker] Iniciando processamento em background do pagamento: ${job.data.paymentId}`);
+    async handleTransaction(job: Job<{ paymentId: string; correlationId: string }>) {
+        this.logger.log(`[Worker] Iniciando processamento do pagamento: ${job.data.paymentId} | CorrelationID: ${job.data.correlationId}`);
 
         // Simula o tempo de rede do gateway de pagamento (2 a 4 segundos)
         const delay = Math.floor(Math.random() * 2000) + 2000;

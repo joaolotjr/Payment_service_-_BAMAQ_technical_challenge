@@ -30,6 +30,7 @@ export class PaymentsService {
       // 2. Dispara a tarefa assíncrona para o Redis processar no fundo!
       await this.paymentsQueue.add('process-transaction', {
         paymentId: payment.id,
+        correlationId: idempotencyKey,
       });
 
       this.logger.log(`Pagamento enfileirado no Redis. Respondendo ao cliente imediatamente.`);
