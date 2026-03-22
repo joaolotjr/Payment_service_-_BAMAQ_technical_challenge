@@ -1,79 +1,59 @@
-import {
-  ConflictException,
-  Injectable,
-  InternalServerErrorException,
-} from '@nestjs/common';
-import { PaymentStatus, Prisma } from '@prisma/client';
+import { InjectQueue } from '@nestjs/bull';
+import { ConflictException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import type { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 
 @Injectable()
 export class PaymentsService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(PaymentsService.name);
 
-  async processPayment(
-    createPaymentDto: CreatePaymentDto,
-    idempotencyKey: string,
-  ) {
+  constructor(
+    private prisma: PrismaService,
+    @InjectQueue('payments-queue') private paymentsQueue: Queue, // Injeta a fila do Redis
+  ) { }
+
+  async processPayment(dto: CreatePaymentDto, idempotencyKey: string) {
     try {
+      this.logger.log(`Recebendo requisição com chave: ${idempotencyKey}`);
+
+      // 1. Otimismo: Tenta inserir direto no banco como PENDING
       const payment = await this.prisma.payment.create({
         data: {
-          amount: createPaymentDto.amount,
-          customerId: createPaymentDto.customerId,
-          idempotencyKey,
-          status: PaymentStatus.PENDING,
+          amount: dto.amount,
+          customerId: dto.customerId,
+          idempotencyKey: idempotencyKey,
+          status: 'PENDING',
         },
       });
 
-      return await this.executeMockPayment(payment.id);
-    } catch (error) {
-      // Verifica se é um erro conhecido do Prisma (ex: violação de unique)
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        if (error.code === 'P2002') {
-          return this.handleExistingPayment(idempotencyKey);
+      // 2. Dispara a tarefa assíncrona para o Redis processar no fundo!
+      await this.paymentsQueue.add('process-transaction', {
+        paymentId: payment.id,
+      });
+
+      this.logger.log(`Pagamento enfileirado no Redis. Respondendo ao cliente imediatamente.`);
+
+      // 3. Retorna PENDING instantaneamente para o usuário
+      return payment;
+
+    } catch (error: any) {
+      if (error.code === 'P2002') {
+        this.logger.warn(`Concorrência detectada para a chave: ${idempotencyKey}. Verificando estado atual...`);
+
+        const existingPayment = await this.prisma.payment.findUnique({
+          where: { idempotencyKey },
+        });
+
+        if (existingPayment?.status === 'PENDING') {
+          throw new ConflictException('Pagamento já está sendo processado.');
         }
+
+        return existingPayment;
       }
 
       console.error('Erro inesperado:', error);
-      throw new InternalServerErrorException(
-        'Erro interno ao processar pagamento',
-      );
+      throw new InternalServerErrorException('Erro interno ao processar pagamento');
     }
-  }
-
-  private async handleExistingPayment(key: string) {
-    const existingPayment = await this.prisma.payment.findUnique({
-      where: { idempotencyKey: key },
-    });
-
-    if (!existingPayment) {
-      throw new InternalServerErrorException('Erro ao recuperar pagamento.');
-    }
-
-    if (existingPayment.status === PaymentStatus.PENDING) {
-      throw new ConflictException({
-        message: 'Uma requisição com esta chave já está em processamento.',
-        status: PaymentStatus.PENDING,
-      });
-    }
-
-    return { status: existingPayment.status };
-  }
-
-  private async executeMockPayment(paymentId: string) {
-    const delay = Math.floor(Math.random() * 2000) + 2000;
-    await new Promise((resolve) => setTimeout(resolve, delay));
-
-    const isSuccess = Math.random() > 0.2;
-    const finalStatus = isSuccess
-      ? PaymentStatus.SUCCESS
-      : PaymentStatus.FAILED;
-
-    await this.prisma.payment.update({
-      where: { id: paymentId },
-      data: { status: finalStatus },
-    });
-
-    return { status: finalStatus };
   }
 }

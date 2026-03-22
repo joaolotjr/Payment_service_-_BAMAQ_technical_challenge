@@ -6,6 +6,7 @@ Este repositório contém a solução para o desafio técnico de backend do Grup
 
 - **Framework:** NestJS (Node.js / TypeScript)
 - **Banco de Dados:** PostgreSQL (via Docker)
+- **Mensageria / Fila:** Redis (via Docker) + BullMQ
 - **ORM:** Prisma (v7+ com Driver Adapter nativo do Node.js)
 - **Qualidade:** Prettier, ESLint configurados.
 
@@ -28,13 +29,13 @@ DATABASE_URL=postgresql://postgres:postgrespassword@localhost:5433/bamaq_payment
 ```
 
 **2. Primeira Execução (Setup Automático de 1 Comando)**
-Para avaliar o projeto do zero, rodando a instalação, subindo a infraestrutura e iniciando a API de uma só vez, rode:
+Para avaliar o projeto do zero, rodando a instalação, subindo a infraestrutura e iniciando a API de uma só vez, rode no terminal:
 
 ```
 npm run start:bamaq
 ```
 
-(Este comando orquestra o `npm install`, levanta o PostgreSQL via docker-compose, aplica as migrações do Prisma e inicia a API no modo watch).
+(Este comando orquestra o npm install, levanta o PostgreSQL e o Redis via docker-compose, aplica as migrações do Prisma e inicia a API no modo watch).
 
 **3. Execuções Subsequentes (Dia a Dia)**
 Se você já rodou o comando acima (ou seja, os pacotes já estão instalados e o banco de dados já está rodando no Docker), você não precisa reinstalar tudo. Para subir apenas a API de forma rápida, utilize:
@@ -61,15 +62,18 @@ O maior desafio de um endpoint de pagamentos é evitar o _Double Spending_ (proc
 
 **Decisão:** Não foi utilizada memória volátil (como `Sets` no Node ou Redis) para gerenciar o estado da concorrência, pois isso falharia em um ambiente com múltiplas instâncias (escalabilidade horizontal). A idempotência foi delegada inteiramente à camada de dados (PostgreSQL) através de uma **Unique Constraint** na coluna `idempotency_key`.
 
-**1. O Fluxo (Otimista):**
+**- O Fluxo (Otimista):**
 
 1. O sistema recebe a requisição e tenta realizar o `INSERT` direto no banco com status `PENDING`.
 2. Em caso de requisições concorrentes no exato mesmo milissegundo, o PostgreSQL aplica o _Lock_ de transação nativo e aceita apenas a primeira, rejeitando as demais com erro de violação de unicidade (código `P2002`).
 3. O código captura essa violação, consulta o estado atual (`PENDING`, `SUCCESS` ou `FAILED`) e retorna o `409 Conflict` (se estiver em andamento) ou o resultado idêntico da primeira requisição finalizada.
    Isso elimina a vulnerabilidade de _Read-before-Write_ e garante 100% de consistência sem travar as threads do Node.js.
 
-**2. Tuning de Concorrência (Prisma Adapter)**
+**- Tuning de Concorrência (Prisma Adapter)**
 Para lidar com a alta carga de conexões simultâneas no banco sem gerar o erro P1017 (Connection Closed), o motor do Prisma foi configurado com o adaptador nativo pg e o Pool de conexões foi ajustado (max: 20, connectionTimeoutMillis: 2000) para garantir resiliência sob estresse.
+
+**- Processamento Assíncrono (Event-Driven com Redis/BullMQ)**
+Para garantir que a aplicação não bloqueie o Event Loop do Node.js durante o tempo de processamento do gateway (I/O intensivo), a arquitetura foi desenhada de forma assíncrona. O endpoint salva a intenção de pagamento no banco e delega o processamento pesado para uma fila gerenciada pelo Redis, devolvendo imediatamente o status PENDING para o cliente (202 Accepted). Um Worker em background consome a fila e finaliza a transação com SUCCESS ou FAILED.
 
 ---
 
@@ -99,11 +103,11 @@ curl -X POST http://localhost:3000/payments \
 
 Para garantir a integridade da regra de negócio mais crítica do sistema (a trava de concorrência e idempotência), o serviço principal (`PaymentsService`) foi coberto com testes unitários.
 
-O dublê (Mock) do Prisma foi configurado para validar 3 comportamentos essenciais da arquitetura:
+O dublê (Mock) do Prisma e da Fila foi configurado para validar 3 comportamentos essenciais da arquitetura:
 
-1. **Caminho Feliz:** Garante que uma requisição limpa crie o pagamento com status `PENDING` e finalize corretamente.
+1. **Caminho Feliz:** Garante que uma requisição limpa crie o pagamento com status `PENDING` e envie o payload corretamente para a fila do Redis.
 2. **Cenário de Retry (Cache):** Simula a tentativa de recriar um pagamento já concluído, garantindo que o sistema intercepte o erro `P2002` do banco e devolva o estado final instantaneamente.
-3. **Cenário de Concorrência Real:** Garante que, se duas threads tentarem processar a mesma chave ao mesmo tempo, a segunda receba um `409 ConflictException` (Internal Server Error tratado), preservando a consistência ACID.
+3. **Cenário de Concorrência Real:** Garante que, se duas threads tentarem processar a mesma chave ao mesmo tempo, a segunda receba um `409 ConflictException` (tratado no catch), preservando a consistência ACID.
 
 Para executar a suíte de testes na sua máquina (não requer Docker ativo), rode na raiz do projeto:
 
