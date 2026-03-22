@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Teste de Idempotência - Bamaq</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background: #f4f7f6;
+        padding: 20px;
+        color: #333;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        padding: 30px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+      h1 {
+        color: #2c3e50;
+        border-bottom: 2px solid #eee;
+        padding-bottom: 10px;
+      }
+
+      /* Novo estilo para o painel de instruções */
+      .instructions {
+        background-color: #e8f4f8;
+        border-left: 4px solid #3498db;
+        padding: 15px;
+        margin-bottom: 25px;
+        border-radius: 4px;
+        font-size: 0.95em;
+      }
+      .instructions h3 {
+        margin-top: 0;
+        color: #2980b9;
+        margin-bottom: 10px;
+      }
+      .instructions p {
+        margin: 5px 0;
+      }
+      .instructions ul {
+        margin-top: 5px;
+        margin-bottom: 15px;
+        padding-left: 20px;
+      }
+      .instructions li {
+        margin-bottom: 5px;
+      }
+      .highlight {
+        background-color: #fdfae6;
+        padding: 2px 5px;
+        border-radius: 3px;
+        border: 1px solid #f1c40f;
+        font-family: monospace;
+      }
+
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+      input {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .btn-group {
+        display: flex;
+        gap: 10px;
+        margin-top: 20px;
+      }
+      button {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: bold;
+        color: white;
+        transition: 0.3s;
+      }
+      .btn-normal {
+        background: #3498db;
+      }
+      .btn-normal:hover {
+        background: #2980b9;
+      }
+      .btn-danger {
+        background: #e74c3c;
+      }
+      .btn-danger:hover {
+        background: #c0392b;
+      }
+      .btn-refresh {
+        background: #2ecc71;
+        margin-top: 10px;
+      }
+      .logs {
+        background: #2c3e50;
+        color: #ecf0f1;
+        padding: 15px;
+        border-radius: 4px;
+        height: 350px;
+        overflow-y: auto;
+        margin-top: 20px;
+        font-family: monospace;
+      }
+      .log-entry {
+        margin-bottom: 10px;
+        border-bottom: 1px solid #34495e;
+        padding-bottom: 5px;
+      }
+      .status-200,
+      .status-201 {
+        color: #2ecc71;
+      }
+      .status-409 {
+        color: #f1c40f;
+      }
+      .status-500 {
+        color: #e74c3c;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>💰 Checkout Bamaq - Teste de Idempotência</h1>
+
+      <div class="instructions">
+        <h3>🧪 Guia do Avaliador: Como testar os cenários</h3>
+
+        <p>
+          <strong
+            >Cenário 1: Concorrência Real (Prevenção de Duplicidade)</strong
+          >
+        </p>
+        <ul>
+          <li>
+            Clique no botão verde <strong>"🔄 Gerar Nova Chave"</strong> para
+            garantir uma requisição Nova.
+          </li>
+          <li>
+            Em seguida, clique direto no botão vermelho
+            <strong>"🔥 Disparar 3x Simultâneas"</strong>.
+          </li>
+          <li>
+            <em>O que observar:</em> O banco de dados travará duas requisições
+            instantaneamente (<span class="highlight">409 Conflict</span>). A
+            requisição "vencedora" processará por ~3 segundos e retornará
+            <span class="highlight">200 OK</span>.
+          </li>
+        </ul>
+
+        <p><strong>Cenários 2 e 3: Retry Seguro após Sucesso/Falha</strong></p>
+        <ul>
+          <li>
+            Com o processamento anterior concluído,
+            <strong>não troque a chave</strong>.
+          </li>
+          <li>
+            Clique no botão azul
+            <strong>"▶ Enviar 1 Requisição Normal"</strong>.
+          </li>
+          <li>
+            <em>O que observar:</em> Não haverá reprocessamento (sem delay). A
+            API retornará <span class="highlight">200 OK</span> instantaneamente
+            com o mesmo status salvo no banco.
+          </li>
+        </ul>
+      </div>
+
+      <div class="form-group">
+        <label>Valor (centavos):</label>
+        <input type="number" id="amount" value="15000" />
+      </div>
+
+      <div class="form-group">
+        <label>ID do Cliente:</label>
+        <input type="text" id="customerId" value="cli_987654321" />
+      </div>
+
+      <div class="form-group">
+        <label>Idempotency-Key (Header Obrigatório):</label>
+        <input type="text" id="idempotencyKey" />
+        <button class="btn-refresh" onclick="generateKey()">
+          🔄 Gerar Nova Chave
+        </button>
+      </div>
+
+      <div class="btn-group">
+        <button class="btn-normal" onclick="sendSingleRequest()">
+          ▶ Enviar 1 Requisição Normal
+        </button>
+        <button class="btn-danger" onclick="sendConcurrentRequests()">
+          🔥 Disparar 3x Simultâneas
+        </button>
+      </div>
+
+      <div class="logs" id="logs">
+        <div style="color: #95a5a6">Aguardando ações...</div>
+      </div>
+    </div>
+
+    <script>
+      function generateKey() {
+        document.getElementById('idempotencyKey').value = crypto.randomUUID();
+      }
+      generateKey();
+
+      function logMessage(prefix, status, responseText) {
+        const logsDiv = document.getElementById('logs');
+        const colorClass =
+          status >= 200 && status < 300
+            ? 'status-200'
+            : status === 409
+              ? 'status-409'
+              : 'status-500';
+
+        const time = new Date().toLocaleTimeString();
+        logsDiv.innerHTML =
+          `
+      <div class="log-entry">
+        <strong>[${time}] ${prefix}</strong> - HTTP <span class="${colorClass}">${status}</span><br>
+        Resposta: ${responseText}
+      </div>
+    ` + logsDiv.innerHTML;
+      }
+
+      async function makePaymentRequest(prefixId) {
+        const amount = parseInt(document.getElementById('amount').value);
+        const customerId = document.getElementById('customerId').value;
+        const idempotencyKey = document.getElementById('idempotencyKey').value;
+
+        logMessage(`REQ ${prefixId}`, '---', 'Enviando ao servidor...');
+
+        try {
+          const response = await fetch('/payments', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Idempotency-Key': idempotencyKey,
+            },
+            body: JSON.stringify({ amount, customerId }),
+          });
+
+          const data = await response.text();
+          logMessage(`REQ ${prefixId} Retorno`, response.status, data);
+        } catch (error) {
+          logMessage(`REQ ${prefixId} Erro`, 500, error.message);
+        }
+      }
+
+      function sendSingleRequest() {
+        document.getElementById('logs').innerHTML = '';
+        makePaymentRequest('Manual');
+      }
+
+      function sendConcurrentRequests() {
+        document.getElementById('logs').innerHTML = '';
+        const key = document.getElementById('idempotencyKey').value;
+        logMessage(
+          'SISTEMA',
+          '---',
+          `Iniciando ataque concorrente com a chave: ${key}`,
+        );
+
+        Promise.all([
+          makePaymentRequest('1 (Duplicada)'),
+          makePaymentRequest('2 (Duplicada)'),
+          makePaymentRequest('3 (Duplicada)'),
+        ]);
+      }
+    </script>
+  </body>
+</html>
