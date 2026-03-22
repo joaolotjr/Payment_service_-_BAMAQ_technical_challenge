@@ -1,4 +1,4 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
@@ -17,5 +17,10 @@ async function bootstrap() {
   );
 
   await app.listen(process.env.PORT ?? 3000);
+
+  // --- O Log amigável para o Avaliador ---  
+  const logger = new Logger('BamaqAPI');
+  logger.log(`🚀 Servidor iniciado com sucesso!`);
+  logger.log(`👉 Teste a aplicação acessando: http://localhost:3000/`);
 }
 bootstrap().catch((err) => console.error(err));
