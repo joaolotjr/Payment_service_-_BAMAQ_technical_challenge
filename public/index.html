@@ -127,6 +127,10 @@
       .status-500 {
         color: #e74c3c;
       }
+      .status-polling {
+        color: #3498db;
+        font-style: italic;
+      }
     </style>
   </head>
   <body>
@@ -135,43 +139,36 @@
 
       <div class="instructions">
         <h3>🧪 Guia do Avaliador: Como testar os cenários</h3>
+        <p><strong>Cenário 1: Fluxo Assíncrono com Polling</strong></p>
+        <ul>
+          <li>
+            Clique no botão <strong>"▶ Enviar 1 Requisição Normal"</strong>.
+          </li>
+          <li>
+            <em>O que observar:</em> A API retornará
+            <span class="highlight">PENDING</span> na hora. O Front-end iniciará
+            verificações automáticas (Polling) até que o Worker do Redis
+            finalize a transação no banco e devolva
+            <span class="highlight">SUCCESS</span>.
+          </li>
+        </ul>
 
         <p>
           <strong
-            >Cenário 1: Concorrência Real (Prevenção de Duplicidade)</strong
+            >Cenário 2: Concorrência Real (Prevenção de Duplicidade)</strong
           >
         </p>
         <ul>
           <li>
-            Clique no botão verde <strong>"🔄 Gerar Nova Chave"</strong> para
-            garantir uma requisição Nova.
-          </li>
-          <li>
-            Em seguida, clique direto no botão vermelho
+            Gere uma nova chave e clique em
             <strong>"🔥 Disparar 3x Simultâneas"</strong>.
           </li>
           <li>
-            <em>O que observar:</em> O banco de dados travará duas requisições
-            instantaneamente (<span class="highlight">409 Conflict</span>). A
-            requisição "vencedora" processará por ~3 segundos e retornará
-            <span class="highlight">200 OK</span>.
-          </li>
-        </ul>
-
-        <p><strong>Cenários 2 e 3: Retry Seguro após Sucesso/Falha</strong></p>
-        <ul>
-          <li>
-            Com o processamento anterior concluído,
-            <strong>não troque a chave</strong>.
-          </li>
-          <li>
-            Clique no botão azul
-            <strong>"▶ Enviar 1 Requisição Normal"</strong>.
-          </li>
-          <li>
-            <em>O que observar:</em> Não haverá reprocessamento (sem delay). A
-            API retornará <span class="highlight">200 OK</span> instantaneamente
-            com o mesmo status salvo no banco.
+            <em>O que observar:</em> O banco travará as duplicatas com
+            <span class="highlight">409 Conflict</span>. Todas as 3 requisições
+            entrarão em Polling juntas e, no final, as 3 receberão o exato mesmo
+            <span class="highlight">SUCCESS</span> final (Idempotência
+            perfeita).
           </li>
         </ul>
       </div>
@@ -214,23 +211,67 @@
       }
       generateKey();
 
-      function logMessage(prefix, status, responseText) {
+      function logMessage(prefix, status, responseText, isPolling = false) {
         const logsDiv = document.getElementById('logs');
-        const colorClass =
-          status >= 200 && status < 300
-            ? 'status-200'
-            : status === 409
-              ? 'status-409'
-              : 'status-500';
+        let colorClass = 'status-200';
+
+        if (isPolling) colorClass = 'status-polling';
+        else if (status === 409) colorClass = 'status-409';
+        else if (status >= 500) colorClass = 'status-500';
 
         const time = new Date().toLocaleTimeString();
         logsDiv.innerHTML =
           `
-      <div class="log-entry">
-        <strong>[${time}] ${prefix}</strong> - HTTP <span class="${colorClass}">${status}</span><br>
-        Resposta: ${responseText}
-      </div>
-    ` + logsDiv.innerHTML;
+          <div class="log-entry">
+            <strong>[${time}] ${prefix}</strong> - HTTP <span class="${colorClass}">${status}</span><br>
+            Resposta: ${responseText}
+          </div>
+        ` + logsDiv.innerHTML;
+      }
+
+      // Função que faz o Polling a cada 1.5s
+      async function pollPaymentStatus(
+        prefixId,
+        amount,
+        customerId,
+        idempotencyKey,
+      ) {
+        try {
+          const response = await fetch('/payments', {
+            method: 'POST', // Repete exatamente a mesma requisição (Idempotência)
+            headers: {
+              'Content-Type': 'application/json',
+              'Idempotency-Key': idempotencyKey,
+            },
+            body: JSON.stringify({ amount, customerId }),
+          });
+
+          const dataText = await response.text();
+
+          // Se a API devolver 409, significa que o Worker AINDA está trabalhando nela.
+          if (response.status === 409) {
+            setTimeout(
+              () =>
+                pollPaymentStatus(prefixId, amount, customerId, idempotencyKey),
+              1500,
+            );
+          } else if (
+            dataText.includes('"status":"SUCCESS"') ||
+            dataText.includes('"status":"FAILED"')
+          ) {
+            // Achou o final da transação! Comemora 🎉
+            logMessage(`✅ ${prefixId} FINALIZADO!`, response.status, dataText);
+          } else {
+            // Caiu em algum outro erro
+            logMessage(
+              `❌ ${prefixId} Erro no Polling`,
+              response.status,
+              dataText,
+            );
+          }
+        } catch (error) {
+          logMessage(`❌ ${prefixId} Erro na rede`, 500, error.message);
+        }
       }
 
       async function makePaymentRequest(prefixId) {
@@ -238,7 +279,7 @@
         const customerId = document.getElementById('customerId').value;
         const idempotencyKey = document.getElementById('idempotencyKey').value;
 
-        logMessage(`REQ ${prefixId}`, '---', 'Enviando ao servidor...');
+        logMessage(`REQ ${prefixId}`, '---', 'Enviando payload ao servidor...');
 
         try {
           const response = await fetch('/payments', {
@@ -250,8 +291,28 @@
             body: JSON.stringify({ amount, customerId }),
           });
 
-          const data = await response.text();
-          logMessage(`REQ ${prefixId} Retorno`, response.status, data);
+          const dataText = await response.text();
+          logMessage(`REQ ${prefixId} Retorno`, response.status, dataText);
+
+          // LÓGICA DE POLLING: Se voltou PENDING ou 409 (Lock), entra no loop de espera
+          if (
+            response.status === 409 ||
+            dataText.includes('"status":"PENDING"')
+          ) {
+            logMessage(
+              `REQ ${prefixId} Aguardando`,
+              '---',
+              '⏳ Worker processando no Redis... Polling ativado!',
+              true,
+            );
+
+            // Espera 1.5s e começa a perguntar de novo
+            setTimeout(
+              () =>
+                pollPaymentStatus(prefixId, amount, customerId, idempotencyKey),
+              1500,
+            );
+          }
         } catch (error) {
           logMessage(`REQ ${prefixId} Erro`, 500, error.message);
         }
@@ -259,7 +320,7 @@
 
       function sendSingleRequest() {
         document.getElementById('logs').innerHTML = '';
-        makePaymentRequest('Manual');
+        makePaymentRequest('Normal');
       }
 
       function sendConcurrentRequests() {
@@ -268,7 +329,8 @@
         logMessage(
           'SISTEMA',
           '---',
-          `Iniciando ataque concorrente com a chave: ${key}`,
+          `Iniciando estresse concorrente. Chave: ${key}`,
+          true,
         );
 
         Promise.all([

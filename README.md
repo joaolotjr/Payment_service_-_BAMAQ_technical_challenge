@@ -86,8 +86,8 @@ Para facilitar a validação dos cenários exigidos, um **Frontend nativo** foi 
 
 Ao acessar `http://localhost:3000`, você terá uma interface dedicada para:
 
-- **Cenário 1 (Concorrência Real):** O botão vermelho dispara 3 requisições simultâneas com a mesma Idempotency-Key. Você verá no painel de logs que o banco de dados barra duas requisições (retornando `409 Conflict`) e processa apenas uma (`200 OK`).
-- **Cenários 2 e 3 (Retry):** Após um pagamento finalizar, clicar no botão de "1 Requisição" com a mesma chave retornará instantaneamente o estado salvo no banco (`SUCCESS` ou `FAILED`), sem reprocessar o delay.
+- **Cenário 1 (Fluxo Assíncrono com Polling):** Ao clicar em "1 Requisição Normal", a API retornará o status PENDING instantaneamente. O Frontend iniciará verificações automáticas `(Short Polling)` de 1.5s em 1.5s, consultando a mesma Idempotency-Key até que o Worker do Redis finalize a transação no banco e devolva o `SUCCESS` definitivo na tela..
+- **Cenário 2 (Concorrência Real e Prevenção de Duplicidade):** O botão vermelho dispara 3 requisições simultâneas no exato mesmo milissegundo. Você verá no painel de logs que o banco de dados barra as duplicatas (retornando `409 Conflict`). O Front-end fará o Polling de todas elas e, ao final, as 3 exibirão o exato mesmo resultado `(SUCCESS)`, provando a idempotência perfeita.
 
 ### ⚙️ Endpoints (cURL manual)
 
