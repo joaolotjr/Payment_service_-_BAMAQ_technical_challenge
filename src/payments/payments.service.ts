@@ -1,13 +1,20 @@
-import { Injectable, ConflictException, InternalServerErrorException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+} from '@nestjs/common';
+import { PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { PaymentStatus } from '@prisma/client';
 
 @Injectable()
 export class PaymentsService {
   constructor(private prisma: PrismaService) {}
 
-  async processPayment(createPaymentDto: CreatePaymentDto, idempotencyKey: string) {
+  async processPayment(
+    createPaymentDto: CreatePaymentDto,
+    idempotencyKey: string,
+  ) {
     try {
       const payment = await this.prisma.payment.create({
         data: {
@@ -19,14 +26,18 @@ export class PaymentsService {
       });
 
       return await this.executeMockPayment(payment.id);
-      
-    } catch (error: any) {
-      if (error.code === 'P2002') {
-        return this.handleExistingPayment(idempotencyKey);
+    } catch (error) {
+      // Verifica se é um erro conhecido do Prisma (ex: violação de unique)
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        if (error.code === 'P2002') {
+          return this.handleExistingPayment(idempotencyKey);
+        }
       }
-      
+
       console.error('Erro inesperado:', error);
-      throw new InternalServerErrorException('Erro interno ao processar pagamento');
+      throw new InternalServerErrorException(
+        'Erro interno ao processar pagamento',
+      );
     }
   }
 
@@ -36,13 +47,13 @@ export class PaymentsService {
     });
 
     if (!existingPayment) {
-        throw new InternalServerErrorException('Erro ao recuperar pagamento.');
+      throw new InternalServerErrorException('Erro ao recuperar pagamento.');
     }
 
     if (existingPayment.status === PaymentStatus.PENDING) {
       throw new ConflictException({
         message: 'Uma requisição com esta chave já está em processamento.',
-        status: PaymentStatus.PENDING
+        status: PaymentStatus.PENDING,
       });
     }
 
@@ -54,7 +65,9 @@ export class PaymentsService {
     await new Promise((resolve) => setTimeout(resolve, delay));
 
     const isSuccess = Math.random() > 0.2;
-    const finalStatus = isSuccess ? PaymentStatus.SUCCESS : PaymentStatus.FAILED;
+    const finalStatus = isSuccess
+      ? PaymentStatus.SUCCESS
+      : PaymentStatus.FAILED;
 
     await this.prisma.payment.update({
       where: { id: paymentId },
