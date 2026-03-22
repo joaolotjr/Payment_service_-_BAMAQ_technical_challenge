@@ -9,7 +9,7 @@
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
-    "start:bamaq": "docker-compose up -d && npx prisma migrate deploy && npm run start:dev",
+    "start:bamaq": "npm install && docker-compose up -d && npx prisma migrate deploy && npm run start:dev",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
