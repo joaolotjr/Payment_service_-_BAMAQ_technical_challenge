@@ -95,4 +95,22 @@ curl -X POST http://localhost:3000/payments \
 
 ---
 
+### 🤖 Testes Automatizados (Unitários com Jest)
+
+Para garantir a integridade da regra de negócio mais crítica do sistema (a trava de concorrência e idempotência), o serviço principal (`PaymentsService`) foi coberto com testes unitários.
+
+O dublê (Mock) do Prisma foi configurado para validar 3 comportamentos essenciais da arquitetura:
+
+1. **Caminho Feliz:** Garante que uma requisição limpa crie o pagamento com status `PENDING` e finalize corretamente.
+2. **Cenário de Retry (Cache):** Simula a tentativa de recriar um pagamento já concluído, garantindo que o sistema intercepte o erro `P2002` do banco e devolva o estado final instantaneamente.
+3. **Cenário de Concorrência Real:** Garante que, se duas threads tentarem processar a mesma chave ao mesmo tempo, a segunda receba um `409 ConflictException` (Internal Server Error tratado), preservando a consistência ACID.
+
+Para executar a suíte de testes na sua máquina (não requer Docker ativo), rode na raiz do projeto:
+
+```
+npm run test
+```
+
+---
+
 _Desenvolvido para o processo seletivo de Desenvolvedor Backend._
