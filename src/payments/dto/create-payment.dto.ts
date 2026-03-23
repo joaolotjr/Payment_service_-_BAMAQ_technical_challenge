@@ -1,4 +1,3 @@
-// eslint-disable-next-line prettier/prettier
 import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, IsUrl } from 'class-validator';
 
 export class CreatePaymentDto {
