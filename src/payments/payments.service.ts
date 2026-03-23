@@ -37,6 +37,7 @@ export class PaymentsService {
       await this.paymentsQueue.add('process-transaction', {
         paymentId: payment.id,
         correlationId: idempotencyKey,
+        webhookUrl: dto.webhookUrl,
       });
 
       this.logger.log(`Pagamento enfileirado no Redis. Respondendo ao cliente imediatamente.`);

@@ -182,6 +182,19 @@
         <button class="btn-refresh" onclick="generateKey()">🔄 Gerar Nova Chave</button>
       </div>
 
+      <div class="mb-4">
+        <label class="block text-sm font-medium text-gray-700">URL de Webhook (Opcional)</label>
+        <input
+          type="text"
+          id="webhookUrl"
+          placeholder="https://webhook.site/seu-id"
+          class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm p-2 text-sm"
+        />
+        <p class="text-xs text-gray-500 mt-1 italic">
+          Use o webhook.site para testar o recebimento externo.
+        </p>
+      </div>
+
       <div class="btn-group">
         <button class="btn-normal" onclick="sendSingleRequest()">
           ▶ Enviar 1 Requisição Normal
@@ -213,38 +226,51 @@
         const time = new Date().toLocaleTimeString();
         logsDiv.innerHTML =
           `
-          <div class="log-entry">
-            <strong>[${time}] ${prefix}</strong> - HTTP <span class="${colorClass}">${status}</span><br>
-            Resposta: ${responseText}
-          </div>
-        ` + logsDiv.innerHTML;
+      <div class="log-entry">
+        <strong>[${time}] ${prefix}</strong> - HTTP <span class="${colorClass}">${status}</span><br>
+        Resposta: ${responseText}
+      </div>
+    ` + logsDiv.innerHTML;
       }
 
-      // Função que faz o Polling a cada 1.5s
-      async function pollPaymentStatus(prefixId, amount, customerId, idempotencyKey) {
+      // --- ATUALIZADO PARA V2: Polling agora envia a webhookUrl também ---
+      async function pollPaymentStatus(prefixId, amount, customerId, idempotencyKey, webhookUrl) {
         try {
+          const payload = { amount, customerId };
+          if (webhookUrl) payload.webhookUrl = webhookUrl; // Mantém a consistência da requisição
+
           const response = await fetch('/payments', {
-            method: 'POST', // Repete exatamente a mesma requisição (Idempotência)
+            method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Idempotency-Key': idempotencyKey,
             },
-            body: JSON.stringify({ amount, customerId }),
+            body: JSON.stringify(payload),
           });
 
           const dataText = await response.text();
 
-          // Se a API devolver 409, significa que o Worker AINDA está trabalhando nela.
           if (response.status === 409) {
-            setTimeout(() => pollPaymentStatus(prefixId, amount, customerId, idempotencyKey), 1500);
+            setTimeout(
+              () => pollPaymentStatus(prefixId, amount, customerId, idempotencyKey, webhookUrl),
+              1500,
+            );
           } else if (
             dataText.includes('"status":"SUCCESS"') ||
             dataText.includes('"status":"FAILED"')
           ) {
-            // Achou o final da transação! Finalizado!
             logMessage(`✅ ${prefixId} FINALIZADO!`, response.status, dataText);
+
+            // Alerta visual de que o Webhook deve ter sido disparado pelo Worker
+            if (webhookUrl) {
+              logMessage(
+                `🌐 WEBHOOK`,
+                '---',
+                `O Worker disparou o aviso para: ${webhookUrl}`,
+                true,
+              );
+            }
           } else {
-            // Caiu em algum outro erro
             logMessage(`❌ ${prefixId} Erro no Polling`, response.status, dataText);
           }
         } catch (error) {
@@ -252,37 +278,43 @@
         }
       }
 
+      // --- ATUALIZADO PARA V2: Captura a URL do Webhook do input ---
       async function makePaymentRequest(prefixId) {
         const amount = parseInt(document.getElementById('amount').value);
         const customerId = document.getElementById('customerId').value;
         const idempotencyKey = document.getElementById('idempotencyKey').value;
+        const webhookUrl = document.getElementById('webhookUrl').value; // 👈 Captura aqui
 
         logMessage(`REQ ${prefixId}`, '---', 'Enviando payload ao servidor...');
 
         try {
+          const payload = { amount, customerId };
+          if (webhookUrl) payload.webhookUrl = webhookUrl; // 👈 Adiciona no payload
+
           const response = await fetch('/payments', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
               'Idempotency-Key': idempotencyKey,
             },
-            body: JSON.stringify({ amount, customerId }),
+            body: JSON.stringify(payload),
           });
 
           const dataText = await response.text();
           logMessage(`REQ ${prefixId} Retorno`, response.status, dataText);
 
-          // LÓGICA DE POLLING: Se voltou PENDING ou 409 (Lock), entra no loop de espera
           if (response.status === 409 || dataText.includes('"status":"PENDING"')) {
             logMessage(
               `REQ ${prefixId} Aguardando`,
               '---',
-              '⏳ Worker processando no Redis... Polling ativado!',
+              `⏳ Worker processando no Redis... ${webhookUrl ? '(Webhook configurado)' : 'Polling ativado!'}`,
               true,
             );
 
-            // Espera 1.5s e começa a perguntar de novo
-            setTimeout(() => pollPaymentStatus(prefixId, amount, customerId, idempotencyKey), 1500);
+            setTimeout(
+              () => pollPaymentStatus(prefixId, amount, customerId, idempotencyKey, webhookUrl),
+              1500,
+            );
           }
         } catch (error) {
           logMessage(`REQ ${prefixId} Erro`, 500, error.message);
@@ -299,11 +331,10 @@
         const key = document.getElementById('idempotencyKey').value;
         logMessage('SISTEMA', '---', `Iniciando estresse concorrente. Chave: ${key}`, true);
 
-        Promise.all([
-          makePaymentRequest('1 (Duplicada)'),
-          makePaymentRequest('2 (Duplicada)'),
-          makePaymentRequest('3 (Duplicada)'),
-        ]);
+        // Dispara as 3 juntas
+        makePaymentRequest('1 (Duplicada)');
+        makePaymentRequest('2 (Duplicada)');
+        makePaymentRequest('3 (Duplicada)');
       }
     </script>
   </body>
