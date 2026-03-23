@@ -29,6 +29,7 @@ export class PaymentsService {
           amount: dto.amount,
           customerId: dto.customerId,
           idempotencyKey: idempotencyKey,
+          webhookUrl: dto.webhookUrl,
           status: 'PENDING',
         },
       });
