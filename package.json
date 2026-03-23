@@ -6,10 +6,11 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
+    "postinstall": "prisma generate",
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
-    "start:bamaq": "npm install --legacy-peer-deps && docker-compose up -d && node -e \"setTimeout(()=>{}, 4000)\" && npx prisma migrate deploy && npm run start:dev",
+    "start:bamaq": "npm install --legacy-peer-deps && docker-compose up -d && node -e \"setTimeout(()=>{}, 6000)\" && npx prisma generate && npx prisma migrate dev && npm run start:dev",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
