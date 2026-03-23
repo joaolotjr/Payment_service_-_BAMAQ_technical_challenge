@@ -1,4 +1,4 @@
-# 💰 Bamaq - Serviço de Pagamentos Idempotente V1
+# Bamaq - Serviço de Pagamentos Idempotente V1
 
 Este repositório contém a solução definitiva para o desafio técnico de backend do Grupo Bamaq. Trata-se de uma API de pagamentos resiliente que utiliza uma arquitetura orientada a eventos, suportando tanto Polling de Idempotência quanto Webhooks Assíncronos.
 
