@@ -24,6 +24,8 @@ model Payment {
   amount         Int           // Valores monetários geralmente são salvos em centavos (inteiros)
   status         PaymentStatus @default(PENDING)
   responseBody   Json?         @map("response_body") // Útil para guardar a resposta exata de falha/sucesso
+
+  webhookUrl     String?  @map("webhook_url")
   
   createdAt      DateTime      @default(now()) @map("created_at")
   updatedAt      DateTime      @updatedAt @map("updated_at")

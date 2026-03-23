@@ -1,11 +1,17 @@
-import { IsInt, IsNotEmpty, IsString, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsPositive, IsString, IsUrl } from 'class-validator';
 
 export class CreatePaymentDto {
   @IsInt()
-  @Min(1, { message: 'O valor (amount) deve ser maior que zero' })
+  @IsPositive()
+  @IsNotEmpty()
   amount: number;
 
   @IsString()
-  @IsNotEmpty({ message: 'O customerId é obrigatório' })
+  @IsNotEmpty()
   customerId: string;
+
+  // 👇 NOVAS VALIDAÇÕES: O campo é opcional, mas se vier, TEM que ser uma URL!
+  @IsUrl()
+  @IsOptional()
+  webhookUrl?: string;
 }

@@ -1,3 +1,4 @@
+import { HttpModule } from '@nestjs/axios';
 import { BullModule } from '@nestjs/bull';
 import { Module } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service'; // <-- Import do Prisma
@@ -7,6 +8,7 @@ import { PaymentsService } from './payments.service';
 
 @Module({
   imports: [
+    HttpModule,
     // Registra a fila específica para injetar no Service
     BullModule.registerQueue({
       name: 'payments-queue',
