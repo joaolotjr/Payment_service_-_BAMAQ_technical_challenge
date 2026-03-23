@@ -1,5 +1,11 @@
 import { InjectQueue } from '@nestjs/bull';
-import { ConflictException, Injectable, InternalServerErrorException, Logger } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  Logger,
+} from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Queue } from 'bull';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -11,7 +17,7 @@ export class PaymentsService {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('payments-queue') private paymentsQueue: Queue, // Injeta a fila do Redis
-  ) { }
+  ) {}
 
   async processPayment(dto: CreatePaymentDto, idempotencyKey: string) {
     try {
@@ -37,10 +43,11 @@ export class PaymentsService {
 
       // 3. Retorna PENDING instantaneamente para o usuário
       return payment;
-
     } catch (error: any) {
-      if (error.code === 'P2002') {
-        this.logger.warn(`Concorrência detectada para a chave: ${idempotencyKey}. Verificando estado atual...`);
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        this.logger.warn(
+          `Concorrência detectada para a chave: ${idempotencyKey}. Verificando estado atual...`,
+        );
 
         const existingPayment = await this.prisma.payment.findUnique({
           where: { idempotencyKey },

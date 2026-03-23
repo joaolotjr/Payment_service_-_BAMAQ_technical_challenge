@@ -25,9 +25,6 @@ export class PaymentsController {
       throw new BadRequestException('O header Idempotency-Key é obrigatório');
     }
 
-    return this.paymentsService.processPayment(
-      createPaymentDto,
-      idempotencyKey,
-    );
+    return this.paymentsService.processPayment(createPaymentDto, idempotencyKey);
   }
 }

@@ -16,4 +16,4 @@ import { PaymentsService } from './payments.service';
   // Declaramos o PrismaService aqui para que o Nest saiba injetá-lo!
   providers: [PaymentsService, PaymentsProcessor, PrismaService],
 })
-export class PaymentsModule { }
+export class PaymentsModule {}
