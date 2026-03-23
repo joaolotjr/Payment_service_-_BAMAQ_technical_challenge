@@ -1,6 +1,8 @@
 # 💰 Bamaq - Serviço de Pagamentos Idempotente V1
 
-Este repositório contém a solução para o desafio técnico de backend do Grupo Bamaq. Trata-se de uma API RESTful para processamento de pagamentos, projetada com foco absoluto em resiliência, concorrência e **idempotência estrita**.
+Este repositório contém a solução definitiva para o desafio técnico de backend do Grupo Bamaq. Trata-se de uma API de pagamentos resiliente que utiliza uma arquitetura orientada a eventos, suportando tanto Polling de Idempotência quanto Webhooks Assíncronos.
+
+---
 
 ## 🛠️ Tecnologias Utilizadas
 
@@ -9,6 +11,8 @@ Este repositório contém a solução para o desafio técnico de backend do Grup
 - **Mensageria / Fila:** Redis (via Docker) + BullMQ
 - **ORM:** Prisma (v7+ com Driver Adapter nativo do Node.js)
 - **Qualidade:** Prettier, ESLint configurados.
+- **Comunicação:** Axios (para disparos de Webhooks v2).
+- **Arquitetura:** Event-Driven com Callbacks (Webhooks).
 
 ---
 
@@ -80,6 +84,9 @@ Para garantir que a aplicação não bloqueie o Event Loop do Node.js durante o 
 **- Observabilidade (Logs Estruturados e Correlation ID)**
 Para garantir a rastreabilidade em um ambiente distribuído e assíncrono, a aplicação utiliza o **Pino** para geração de Logs Estruturados (JSON). Toda requisição recebe (ou gera) um `Correlation ID` único, que é injetado no contexto do log e repassado integralmente para os _Workers_ do Redis. Isso permite que ferramentas de APM (como Datadog ou Kibana) consigam rastrear o ciclo de vida completo de uma transação, desde a Controller até a finalização do processamento em _background_.
 
+**- Notificação Ativa (Webhooks v2)**
+Para otimizar o consumo de recursos e melhorar a experiência do parceiro, a V2 implementa Webhooks. O cliente pode enviar uma webhookUrl opcional no payload. Assim que o Worker do Redis finaliza o processamento, o sistema realiza um POST automático para o endpoint do cliente com o status consolidado, eliminando a necessidade de consultas repetitivas (polling).
+
 ---
 
 ## 🧪 Como testar a aplicação
@@ -91,6 +98,8 @@ Ao acessar `http://localhost:3000`, você terá uma interface dedicada para:
 - **Cenário 1 (Fluxo Assíncrono com Polling):** Ao clicar em "1 Requisição Normal", a API retornará o status PENDING instantaneamente. O Frontend iniciará verificações automáticas `(Short Polling)` de 1.5s em 1.5s, consultando a mesma Idempotency-Key até que o Worker do Redis finalize a transação no banco e devolva o `SUCCESS` definitivo na tela..
 - **Cenário 2 (Concorrência Real e Prevenção de Duplicidade):** O botão vermelho dispara 3 requisições simultâneas no exato mesmo milissegundo. Você verá no painel de logs que o banco de dados barra as duplicatas (retornando `409 Conflict`). O Front-end fará o Polling de todas elas e, ao final, as 3 exibirão o exato mesmo resultado `(SUCCESS)`, provando a idempotência perfeita.
 
+- **Cenário 3 (Webhooks Externos):** No Dashboard, insira uma URL do `webhook.site`. Ao disparar a requisição, você poderá observar em tempo real o Worker processando a tarefa e "ligando de volta" para a URL fornecida, entregando o JSON com o resultado final do pagamento.
+
 ### ⚙️ Endpoints (cURL manual)
 
 Se preferir testar via terminal:
@@ -98,8 +107,12 @@ Se preferir testar via terminal:
 ```
 curl -X POST http://localhost:3000/payments \
  -H "Content-Type: application/json" \
- -H "Idempotency-Key: uuid-chave-123" \
- -d '{"amount": 100, "customerId": "cli_123"}'
+ -H "Idempotency-Key: uuid-chave-v2" \
+ -d '{
+  "amount": 15000,
+  "customerId": "cli_123",
+  "webhookUrl": "https://webhook.site/seu-id"
+ }'
 ```
 
 ---
@@ -122,13 +135,15 @@ npm run test
 
 ---
 
-## 🔮 Roadmap e Melhorias Futuras (V2)
+## 🔮 Roadmap e Melhorias Futuras (V3)
 
-Embora esta versão (V1) atenda a todos os requisitos arquiteturais e de resiliência, o desenvolvimento não para por aqui. Como evolução natural para um cenário de integração real B2B, uma **V2 está em desenvolvimento em uma branch paralela (`feat/webhook-assincrono`)**.
+Com a **V2 (Webhooks)** concluída, os próximos passos para uma escala global seriam:
 
-O objetivo desta nova versão é substituir o _Short Polling_ atual por uma arquitetura orientada a eventos mais eficiente: **Webhooks**.
+- **Retentativas Inteligentes (Retries):** Implementar uma política de Exponential Backoff no BullMQ para reenvio de Webhooks em caso de falha no servidor do cliente.
 
-Na V2, o _Worker_ do Redis utilizará um cliente HTTP (`Axios`) para realizar um _Callback_ (POST) diretamente para a URL do sistema parceiro assim que o status final do pagamento for consolidado no banco de dados, eliminando a necessidade de o cliente consultar ativamente a API.
+- **Segurança de Webhook:** Implementar assinaturas de payload (HMAC SHA256) para que o cliente possa verificar se a notificação realmente veio da Bamaq.
+
+- **Dashboard de Monitoramento:** Integração com o Bull Board para visualização gráfica das filas do Redis em tempo real.
 
 ---
 
