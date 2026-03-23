@@ -48,6 +48,8 @@ npm run start:dev
 
 Acesse o painel de testes interativo no seu navegador: http://localhost:3000
 
+---
+
 ## 🏗️ Arquitetura e Decisões Técnicas
 
 A stack escolhida foi alinhada com as demandas modernas de microsserviços e os requisitos da vaga:
@@ -117,6 +119,16 @@ Para executar a suíte de testes na sua máquina (não requer Docker ativo), rod
 ```
 npm run test
 ```
+
+---
+
+## 🔮 Roadmap e Melhorias Futuras (V2)
+
+Embora esta versão (V1) atenda a todos os requisitos arquiteturais e de resiliência, o desenvolvimento não para por aqui. Como evolução natural para um cenário de integração real B2B, uma **V2 está em desenvolvimento em uma branch paralela (`feat/webhook-assincrono`)**.
+
+O objetivo desta nova versão é substituir o _Short Polling_ atual por uma arquitetura orientada a eventos mais eficiente: **Webhooks**.
+
+Na V2, o _Worker_ do Redis utilizará um cliente HTTP (`Axios`) para realizar um _Callback_ (POST) diretamente para a URL do sistema parceiro assim que o status final do pagamento for consolidado no banco de dados, eliminando a necessidade de o cliente consultar ativamente a API.
 
 ---
 
